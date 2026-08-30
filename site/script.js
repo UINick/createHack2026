@@ -68,7 +68,10 @@ function consumePendingTogetherInvite() {
   const id = takeTogetherInvite();
   if (!id) return;
   const tryOpen = () => {
-    if (window.Together && typeof window.Together.openInviteLink === "function") {
+    if (
+      window.Together &&
+      typeof window.Together.openInviteLink === "function"
+    ) {
       window.Together.openInviteLink(id);
       return true;
     }
@@ -80,9 +83,8 @@ function consumePendingTogetherInvite() {
   }
 }
 
-// Hey stop peaking!
-const CHAT_GPT_TOKEN =
-  "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";
+const GEMINI_API_KEY = "AQ.Ab8RN6LZCRh104dv3MlcKltj3kx_0VyypeSvac8AVlbDB_OSbw";
+const GEMINI_MODEL = "gemini-3.6-flash";
 function currentRedirectUri() {
   const u = new URL(window.location.href);
   u.search = "";
@@ -1836,21 +1838,7 @@ async function fetchSimplifiedVerse(chapterData, verse) {
   if (AI_REWORD_CACHE.has(cacheKey)) return AI_REWORD_CACHE.get(cacheKey);
 
   const chapterContext = buildChapterContext(chapterData);
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${CHAT_GPT_TOKEN}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      temperature: 0.3,
-      max_tokens: 1000,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `Você é um assistente teológico que explica versículos bíblicos dentro de um aplicativo. Você deve ler o versículo dentro do contexto do capítulo e do livro inteiro.
+  const systemInstruction = `Você é um assistente teológico que explica versículos bíblicos dentro de um aplicativo. Você deve ler o versículo dentro do contexto do capítulo e do livro inteiro.
 
 GUARDA-ROUPAS BÍBLICOS OBRIGATÓRIOS:
 1. A Bíblia é a fonte primária. Não apresente tradição, especulação ou comentário cultural como texto explícito.
@@ -1872,21 +1860,43 @@ Você deve retornar ESTRITAMENTE um objeto JSON contendo as seguintes chaves, ma
   "explanation": "A explicação detalhada do versículo em si, considerando todo o contexto acima.",
   "disclaimer": "- Essa explicação foi gerada por inteligência artificial e pode apresentar erros. Recomendamos a consulta da palavra original."
 }
-Responda em português, de forma clara, direta e acessível a um leitor leigo, sem jargões desnecessários.`,
+Responda em português, de forma clara, direta e acessível a um leitor leigo, sem jargões desnecessários.`;
+  const userPrompt = `Referência: ${chapterData.reference.human}\n\nContexto do Capítulo Inteiro:\n${chapterContext}\n\nVersículo Alvo: ${verse.number}\nTexto do Versículo: ${verse.text}\n\nGere a explicação em JSON estruturado.`;
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: systemInstruction }],
         },
-        {
-          role: "user",
-          content: `Referência: ${chapterData.reference.human}\n\nContexto do Capítulo Inteiro:\n${chapterContext}\n\nVersículo Alvo: ${verse.number}\nTexto do Versículo: ${verse.text}\n\nGere a explicação em JSON estruturado.`,
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: userPrompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1000000,
+          responseMimeType: "application/json",
         },
-      ],
-    }),
-  });
+      }),
+    },
+  );
   if (!res.ok) {
-    const errorText = await res.json().catch(() => "");
-    throw new Error(errorText || `OpenAI ${res.status}`);
+    const errorPayload = await res.json().catch(() => null);
+    const errorText =
+      errorPayload?.error?.message ||
+      errorPayload?.message ||
+      `Gemini ${res.status}`;
+    throw new Error(errorText);
   }
   const data = await res.json();
-  const content = String(data?.choices?.[0]?.message?.content || "")
+  const content = String(data?.candidates?.[0]?.content?.parts?.[0]?.text || "")
     .replace(/\s+/g, " ")
     .trim();
   if (!content) throw new Error("A IA não retornou texto.");
@@ -3579,7 +3589,9 @@ function initReaderAndHooks() {
   };
   if (!tryInitTogether()) {
     setTimeout(tryInitTogether, 0);
-    document.addEventListener("DOMContentLoaded", tryInitTogether, { once: true });
+    document.addEventListener("DOMContentLoaded", tryInitTogether, {
+      once: true,
+    });
     window.addEventListener("load", tryInitTogether, { once: true });
   }
 
