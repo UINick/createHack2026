@@ -83,7 +83,7 @@ function consumePendingTogetherInvite() {
   }
 }
 
-const GEMINI_API_KEY = "AQ.Ab8RN6LZCRh104dv3MlcKltj3kx_0VyypeSvac8AVlbDB_OSbw";
+const GEMINI_API_KEY = "";
 const GEMINI_MODEL = "gemini-3.6-flash";
 function currentRedirectUri() {
   const u = new URL(window.location.href);
